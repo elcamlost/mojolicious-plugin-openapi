@@ -26,6 +26,8 @@ post '/pets' => sub {
   },
   'createPets';
 
+
+my $test_custom_logger = 0;
 plugin OpenAPI => {
   url      => path(__FILE__)->dirname->child(qw(spec v3-petstore.json)),
   schema   => 'v3',
@@ -36,7 +38,8 @@ plugin OpenAPI => {
     $c->res->headers->content_type($ct);
     return '<xml></xml>' if $ct =~ m!^application/xml!;
     return Mojo::JSON::encode_json($data);
-  }
+  },
+  logger => sub { $test_custom_logger = 1 },
 };
 
 my $t = Test::Mojo->new;
@@ -51,6 +54,7 @@ $t->get_ok('/v1/pets?limit=10', {Accept => 'not/supported'})->status_is(500)
 
 $t->get_ok('/v1/pets?limit=0', {Accept => 'application/json'})->status_is(500)
   ->json_is('/errors/0/message', 'Expected array - got object.');
+is $test_custom_logger, 1;
 
 $t->get_ok('/v1/pets?limit=10', {Accept => 'application/json'})->status_is(200)
   ->header_like('Content-Type' => qr{^application/json})->content_is('[]');

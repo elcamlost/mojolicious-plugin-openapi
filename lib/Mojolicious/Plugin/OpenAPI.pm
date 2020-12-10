@@ -23,6 +23,20 @@ has _renderer => sub {
   };
 };
 
+has _logger => sub {
+  return sub {
+    my ($self, $c, $dir) = (shift, shift, shift);
+    my $log_level = $self->{log_level};
+
+    $c->app->log->$log_level(
+      sprintf 'OpenAPI %s %s %s %s',
+      $dir, $c->req->method,
+      $c->req->url->path,
+      Mojo::JSON::encode_json(@_)
+    );
+  }
+};
+
 sub register {
   my ($self, $app, $config) = @_;
 
@@ -52,6 +66,7 @@ sub register {
   $self->{default_response_name}  = $config->{default_response_name}  || 'DefaultResponse';
   $self->{log_level} = $ENV{MOJO_OPENAPI_LOG_LEVEL} || $config->{log_level} || 'warn';
   $self->_renderer($config->{renderer}) if $config->{renderer};
+  $self->_logger($config->{logger}) if $config->{logger};
   $self->_build_route($app, $config);
 
   my @plugins;
@@ -294,18 +309,6 @@ sub _helper_validate {
   return $self->validator->validate_request($c, $op_spec, $c->validation->output);
 }
 
-sub _log {
-  my ($self, $c, $dir) = (shift, shift, shift);
-  my $log_level = $self->{log_level};
-
-  $c->app->log->$log_level(
-    sprintf 'OpenAPI %s %s %s %s',
-    $dir, $c->req->method,
-    $c->req->url->path,
-    Mojo::JSON::encode_json(@_)
-  );
-}
-
 sub _parameters_for { $_[0]->{parameters_for}{$_[2]}{lc($_[1])} || [] }
 
 sub _render {
@@ -330,7 +333,7 @@ sub _render {
     @errors = ({message => qq(No response rule for "$status".)});
   }
 
-  $self->_log($c, '>>>', \@errors) if @errors;
+  $self->_logger->($c, '>>>', \@errors) if @errors;
   $c->stash(status => $args->{status});
   $$output = $self->_renderer->($c, @errors ? {errors => \@errors, status => $status} : $res);
 }
@@ -509,6 +512,7 @@ below shows the default L</renderer> which generates JSON data:
     }
   );
 
+
 =head1 ATTRIBUTES
 
 =head2 route
@@ -582,6 +586,16 @@ for more details.
 C<log_level> is used when logging invalid request/response error messages.
 
 Default: "warn".
+
+=head3 logger
+
+C<logger> is a function to log messages, which also defines log format.
+
+Default logger respects L<log_level> and uses this format:
+
+  OpenAPI >>> HTTP_METHOD URL_PATH MESSAGE
+
+You can pass any function which will be used to log validation errors.
 
 =head3 plugins
 
